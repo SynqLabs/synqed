@@ -2,7 +2,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
-The Synqed Python library enables AI agents to collaborate, delegate, and coordinate with each other autonomously. Build multi-agent systems where agents work together - a research agent consults specialists, a design agent brainstorms with analysts, or your OpenAI agent delegates to specialized agents. All seamlessly, all automatically.
+Make AI agents to collaborate, delegate, and coordinate with each other autonomously. Build multi-agent systems where agents work together - a research agent consults specialists, a design agent brainstorms with analysts, or your OpenAI agent delegates to specialized agents. All seamlessly, all automatically.
 
 The library provides type-safe interfaces for creating collaborative agents with built-in intelligent orchestration. It works with any LLM provider (OpenAI, Anthropic, Google) and enables true agent-to-agent interaction.
 
@@ -412,181 +412,131 @@ orchestrator = Orchestrator(
 
 ### Example: Multi-Agent Collaboration System
 
-This example shows how to build a collaborative multi-agent system where agents work together on complex tasks:
-
-### Example 2: Multi-Agent System with Orchestration
+This example demonstrates agents collaborating on complex tasks through intelligent orchestration:
 
 ```python
 import asyncio
 import os
-from synqed import Agent, AgentServer, Orchestrator, LLMProvider
+from synqed import Agent, AgentServer, Orchestrator, LLMProvider, Client
 from openai import AsyncOpenAI
 
-# ============================================================================
-# Agent 1: Recipe Agent
-# ============================================================================
-
-async def recipe_logic(context):
-    user_message = context.get_user_input()
-    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Define agent executors
+async def research_logic(context):
+    """Research agent - gathers information and analyzes data."""
+    message = context.get_user_input()
+    client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4o",
         messages=[
-            {
-                "role": "system",
-                "content": "You are a recipe expert. Suggest recipes based on "
-                          "ingredients, cuisine type, or dietary restrictions."
-            },
-            {"role": "user", "content": user_message}
+            {"role": "system", "content": "You are a research specialist. Gather comprehensive information and provide detailed analysis."},
+            {"role": "user", "content": message}
         ]
     )
-    
     return response.choices[0].message.content
 
-# ============================================================================
-# Agent 2: Shopping Agent
-# ============================================================================
-
-async def shopping_logic(context):
-    user_message = context.get_user_input()
-    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+async def coding_logic(context):
+    """Coding agent - writes and reviews code."""
+    message = context.get_user_input()
+    client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4o",
         messages=[
-            {
-                "role": "system",
-                "content": "You are a shopping assistant. Create shopping lists, "
-                          "compare prices, and suggest where to buy items."
-            },
-            {"role": "user", "content": user_message}
+            {"role": "system", "content": "You are a coding expert. Write clean, efficient, well-documented code."},
+            {"role": "user", "content": message}
         ]
     )
-    
     return response.choices[0].message.content
 
-# ============================================================================
-# Agent 3: Nutrition Agent
-# ============================================================================
-
-async def nutrition_logic(context):
-    user_message = context.get_user_input()
-    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+async def writing_logic(context):
+    """Writing agent - creates polished documentation."""
+    message = context.get_user_input()
+    client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4o",
         messages=[
-            {
-                "role": "system",
-                "content": "You are a nutrition expert. Provide nutritional "
-                          "information, calculate calories, and give healthy eating advice."
-            },
-            {"role": "user", "content": user_message}
+            {"role": "system", "content": "You are a technical writer. Create clear, professional documentation."},
+            {"role": "user", "content": message}
         ]
     )
-    
     return response.choices[0].message.content
 
-# ============================================================================
-# Main System
-# ============================================================================
 
 async def main():
-    # Create agents
-    recipe_agent = Agent(
-        name="RecipeAgent",
-        description="Find and recommend recipes",
-        skills=[
-            {
-                "skill_id": "recipe_search",
-                "name": "Recipe Search",
-                "description": "Find recipes by ingredient or cuisine",
-                "tags": ["cooking", "recipes", "food"]
-            }
-        ],
-        executor=recipe_logic
+    # Create specialized agents
+    research_agent = Agent(
+        name="ResearchAgent",
+        description="Conducts research and data analysis",
+        skills=["research", "analysis", "data_gathering"],
+        executor=research_logic
     )
     
-    shopping_agent = Agent(
-        name="ShoppingAgent",
-        description="Create shopping lists and find products",
-        skills=[
-            {
-                "skill_id": "shopping_list",
-                "name": "Shopping List",
-                "description": "Create and manage shopping lists",
-                "tags": ["shopping", "grocery", "list"]
-            }
-        ],
-        executor=shopping_logic
+    coding_agent = Agent(
+        name="CodingAgent",
+        description="Writes and reviews code",
+        skills=["programming", "code_review", "debugging"],
+        executor=coding_logic
     )
     
-    nutrition_agent = Agent(
-        name="NutritionAgent",
-        description="Provide nutrition information and advice",
-        skills=[
-            {
-                "skill_id": "nutrition_info",
-                "name": "Nutrition Info",
-                "description": "Calculate calories and provide nutrition facts",
-                "tags": ["nutrition", "health", "calories"]
-            }
-        ],
-        executor=nutrition_logic
+    writing_agent = Agent(
+        name="WritingAgent",
+        description="Creates technical documentation",
+        skills=["documentation", "technical_writing", "editing"],
+        executor=writing_logic
     )
     
-    # Start agents on different ports
-    recipe_server = AgentServer(recipe_agent, port=8001)
-    shopping_server = AgentServer(shopping_agent, port=8002)
-    nutrition_server = AgentServer(nutrition_agent, port=8003)
+    # Start agents (running concurrently)
+    servers = [
+        AgentServer(research_agent, port=8001),
+        AgentServer(coding_agent, port=8002),
+        AgentServer(writing_agent, port=8003)
+    ]
     
-    await recipe_server.start_background()
-    await shopping_server.start_background()
-    await nutrition_server.start_background()
+    for server in servers:
+        await server.start_background()
     
-    print("✅ All agents running")
-    print(f"  - Recipe Agent: {recipe_agent.url}")
-    print(f"  - Shopping Agent: {shopping_agent.url}")
-    print(f"  - Nutrition Agent: {nutrition_agent.url}")
-    
-    # Create orchestrator
+    # Create orchestrator for intelligent task routing
     orchestrator = Orchestrator(
         provider=LLMProvider.OPENAI,
-        api_key=os.getenv("OPENAI_API_KEY"),
+        api_key=os.environ.get("OPENAI_API_KEY"),
         model="gpt-4o"
     )
     
-    # Register agents
-    orchestrator.register_agent(recipe_agent.card, recipe_agent.url)
-    orchestrator.register_agent(shopping_agent.card, shopping_agent.url)
-    orchestrator.register_agent(nutrition_agent.card, nutrition_agent.url)
+    # Register agents with orchestrator
+    orchestrator.register_agent(research_agent.card, research_agent.url)
+    orchestrator.register_agent(coding_agent.card, coding_agent.url)
+    orchestrator.register_agent(writing_agent.card, writing_agent.url)
     
-    print("\n✅ Orchestrator configured with 3 agents\n")
+    print("✅ Multi-agent system ready\n")
     
-    # Test orchestration
+    # Example: Agents collaborate on complex project
     tasks = [
-        "Find me a healthy pasta recipe",
-        "Create a shopping list for a stir fry dinner",
-        "How many calories are in a pepperoni pizza?"
+        "Research best practices for microservices architecture",
+        "Implement a rate limiter in Python",
+        "Write API documentation for the rate limiter"
     ]
     
     for task in tasks:
         print(f"📋 Task: {task}")
+        
+        # Orchestrator intelligently routes to best agent
         result = await orchestrator.orchestrate(task)
-        print(f"   🎯 Selected: {result.selected_agents[0].agent_name}")
-        print(f"   📊 Confidence: {result.selected_agents[0].confidence:.0%}")
-        print(f"   💡 Reasoning: {result.selected_agents[0].reasoning}\n")
+        selected = result.selected_agents[0]
+        
+        print(f"   → Routed to: {selected.agent_name}")
+        print(f"   → Confidence: {selected.confidence:.0%}")
+        print(f"   → Reasoning: {selected.reasoning}\n")
+        
+        # Execute task with selected agent
+        async with Client(selected.agent_url) as client:
+            response = await client.ask(task)
+            print(f"   ✅ Response: {response[:100]}...\n")
     
-    # Keep servers running
-    print("Press Ctrl+C to stop...")
-    try:
-        await asyncio.Event().wait()
-    except KeyboardInterrupt:
-        print("\n\n🛑 Shutting down...")
-        await recipe_server.stop()
-        await shopping_server.stop()
-        await nutrition_server.stop()
+    # Cleanup
+    for server in servers:
+        await server.stop()
 
 if __name__ == "__main__":
     asyncio.run(main())

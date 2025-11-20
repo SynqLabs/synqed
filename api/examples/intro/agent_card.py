@@ -12,6 +12,7 @@ To run:
 1. First, start the agent: python agent.py
 2. Then run this script: python agent_card.py
 """
+import synqed
 import asyncio
 import aiohttp
 

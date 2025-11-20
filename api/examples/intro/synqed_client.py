@@ -19,25 +19,21 @@ To run:
 1. First, start the agent: python agent_creation_and_card.py
 2. Then run this client: python client.py
 """
-import asyncio
-from pathlib import Path
 import synqed
-from dotenv import load_dotenv
-
-# Load environment variables from .env file at repository root
-env_path = Path(__file__).parent.parent.parent / '.env'
-load_dotenv(dotenv_path=env_path)
+import asyncio
 
 async def main():
+    # Connect to the AI agent
     async with synqed.Client("http://localhost:8000") as client:
-        # Option 1: Simple request-response
-        response = await client.ask("What are the top 3 most popular songs of all time?")
-        print(f"Agent: {response}")
         
-        # Option 2: Streaming response (like ChatGPT typing)
-        print("Streaming: ", end="")
-        async for chunk in client.stream("Tell me a joke"):
-            print(chunk, end="", flush=True)
+        # Method 1: Get the complete answer at once
+        response = await client.ask("What are 3 best practices for customer support?")
+        print(f"Complete response:\n{response}\n")
+        
+        # Method 2: Get the answer piece by piece, in real-time
+        print("Streaming response:")
+        async for chunk in client.stream("Tell me a short story about a helpful robot"):
+            print(chunk, end="", flush=True)  # Creates typing effect
         print()
 
 if __name__ == "__main__":

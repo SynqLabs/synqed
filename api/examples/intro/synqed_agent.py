@@ -27,46 +27,58 @@ Setup:
 3. Run: python agent.py
 4. Test: python client.py (in another terminal)
 """
-
+import synqed
 import asyncio
+
 import os
 from pathlib import Path
-import synqed
 from dotenv import load_dotenv
 
-# Load environment variables from .env file at repository root
-env_path = Path(__file__).parent.parent.parent / '.env'
-load_dotenv(dotenv_path=env_path)
+# Load environment variables from .env file
+# Look for .env in the script directory, parent directories, or current working directory
+load_dotenv()  # Checks current directory and parents
+load_dotenv(dotenv_path=Path(__file__).parent / '.env')  # Check script directory
 
 async def agent_logic(context):
+    """Agent logic for a gpt-4o agent."""
     user_message = context.get_user_input()
     
-    # Use any LLM you want
+    # Define the agent's capabilities and what LLM it is
     from openai import AsyncOpenAI
-    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     
     response = await client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "system", "content": "You are a helpful customer support assistant."},
             {"role": "user", "content": user_message}
         ]
     )
-    
+        
     return response.choices[0].message.content
 
 async def main():
-    # Create your agent
+    # Step 1: Create your agent
     agent = synqed.Agent(
-        name="MyFirstAgent",
-        description="A helpful AI assistant",
-        skills=["general_assistance", "question_answering"],
-        executor=agent_logic
+        name="Customer Support Assistant",
+        description="Automated support agent that handles customer inquiries and service requests efficiently",
+        skills=["customer_support", "ticket_routing", "inquiry_handling"],
+        executor=agent_logic,  # The function that processes messages
+        
+        # Optional: Configure agent capabilities
+        capabilities={
+            "streaming": True,              # Enable real-time streaming responses
+            "push_notifications": False,    # Disable webhook notifications for long tasks
+            "state_transition_history": False  # Disable state history tracking
+        }
     )
     
-    # Start the server
+    # Step 2: Create a server to host your agent
     server = synqed.AgentServer(agent, port=8000)
+    
+    # Step 3: Start the server
     print(f"Agent running at {agent.url}")
+    print("Ready to receive messages! Run client.py to test it.")
     await server.start()
 
 if __name__ == "__main__":

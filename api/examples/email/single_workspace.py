@@ -13,7 +13,7 @@ Key Architecture:
 - Alice, Bob, Charlie are peer specialists (no coordinator role)
 - Each agent has specific capabilities and responds to messages
 - Shared plan document accessible via context.shared_plan
-- Turn type inference (delegation, finalization, proposal, coordination)
+- Agents can broadcast to ALL peers using send_to: "ALL"
 
 Framework Handles:
 - Task breakdown and delegation (via PlannerLLM)
@@ -49,171 +49,114 @@ logging.basicConfig(
 
 
 # ============================================================================
+# Shared Agent Logic Helper
+# ============================================================================
+
+async def create_agent_response(
+    context: synqed.AgentLogicContext,
+    agent_name: str,
+    role: str,
+    capabilities: str,
+    custom_instructions: str,
+    max_tokens: int = 500
+) -> dict:
+    """Shared logic for all agents - DRY principle."""
+    latest = context.latest_message
+    if not latest or not latest.content:
+        return None
+    
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    if not anthropic_key:
+        print("❌ ANTHROPIC_API_KEY not set!")
+        return None
+    
+    client = AsyncAnthropic(api_key=anthropic_key)
+    
+    # Get protocol (excludes current agent from team roster)
+    protocol = synqed.get_interaction_protocol(exclude_agent=agent_name)
+    
+    system_prompt = f"""{protocol}
+
+YOUR ROLE: {agent_name} ({role})
+YOUR CAPABILITIES: {capabilities}
+
+{custom_instructions}
+"""
+    
+    history = context.get_conversation_history(workspace_wide=True)
+    plan_context = f"\n\nShared Plan:\n{context.shared_plan}" if context.shared_plan else ""
+    
+    conversation_text = f"Conversation:\n{history}{plan_context}\n\nRespond with JSON:"
+    
+    response = await client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=max_tokens,
+        system=system_prompt,
+        messages=[{"role": "user", "content": conversation_text}],
+    )
+    
+    return response.content[0].text.strip()
+
+
+# ============================================================================
 # Agent Logic Functions
 # ============================================================================
 
 async def alice_logic(context: synqed.AgentLogicContext) -> dict:
-    """Alice - Curious explorer from Wonderland, setup specialist"""
-    latest = context.latest_message
-    if not latest or not latest.content:
-        return None
-    
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-    if not anthropic_key:
-        print("❌ ANTHROPIC_API_KEY not set!")
-        return None
-    
-    client = AsyncAnthropic(api_key=anthropic_key)
-    
-    # Alice is just another specialist - she handles party decorations and aesthetics
-    custom_instructions = (
-        "You handle decorations, invitations, and the overall aesthetic theme for the tea party. "
-        "Focus on: color schemes, decorations, invitations, party favors, aesthetic coordination.\n\n"
-        "CRITICAL WORKFLOW:\n"
-        "1. When you receive a subtask from USER, DO NOT respond to USER yet!\n"
-        "2. First, reach out to bob and charlie to discuss and coordinate your plans\n"
-        "3. Exchange messages with them to align on the overall design\n"
-        "4. ONLY after coordinating with both bob and charlie, send your final results to USER"
-    )
-    
-    # Build full system prompt with protocol
-    # Note: get_interaction_protocol() automatically includes team roster
-    # so alice knows that bob handles construction and charlie handles food
-    protocol = synqed.get_interaction_protocol(exclude_agent="alice")
-    
-    system_prompt = f"""
-{protocol}
+    """Alice - Curious explorer from Wonderland, decorations specialist"""
+    return await create_agent_response(
+        context=context,
+        agent_name="alice",
+        role="wonderland",
+        capabilities="decorations, aesthetics, party theme, invitations, color schemes",
+        custom_instructions="""You handle decorations, invitations, and the overall aesthetic theme.
 
-YOUR ROLE: alice (wonderland)
-YOUR CAPABILITIES: decorations, aesthetics, party theme, invitations
-DEFAULT COORDINATION STYLE: respond_to_sender
+WORKFLOW:
+1. When you receive a subtask from USER, coordinate with teammates FIRST
+2. Use send_to: "ALL" to share your plans with bob and charlie together
+3. Read their responses and refine your approach
+4. ONLY after alignment, send final results to USER with send_to: "USER"
 
-{custom_instructions}
-"""
-    
-    history = context.get_conversation_history(workspace_wide=True)
-    plan_context = f"\n\nShared Plan:\n{context.shared_plan}" if context.shared_plan else ""
-    
-    conversation_text = f"Conversation:\n{history}{plan_context}\n\nRespond with JSON:"
-    
-    response = await client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=200,
-        system=system_prompt,
-        messages=[{"role": "user", "content": conversation_text}],
+Focus areas: color schemes, decorations, invitations, party favors, aesthetic coordination."""
     )
-    
-    reply = response.content[0].text.strip()
-    
-    return reply
 
 
 async def bob_logic(context: synqed.AgentLogicContext) -> dict:
-    """Bob - Helpful builder"""
-    latest = context.latest_message
-    if not latest or not latest.content:
-        return None
-    
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-    if not anthropic_key:
-        print("❌ ANTHROPIC_API_KEY not set!")
-        return None
-    
-    client = AsyncAnthropic(api_key=anthropic_key)
-    
-    # Custom instructions
-    custom_instructions = (
-        "You handle construction and setup for a tea party. "
-        "Focus on: tables, chairs, furniture arrangement, venue setup, structures.\n\n"
-        "CRITICAL WORKFLOW:\n"
-        "1. When you receive a subtask from USER, DO NOT respond to USER yet!\n"
-        "2. First, reach out to alice and charlie to discuss and coordinate your plans\n"
-        "3. Exchange messages with them to align on setup, decorations, and menu needs\n"
-        "4. ONLY after coordinating with both alice and charlie, send your final results to USER"
-    )
-    
-    # Build full system prompt with protocol  
-    # Note: get_interaction_protocol() automatically includes team roster
-    protocol = synqed.get_interaction_protocol(exclude_agent="bob")
-    
-    system_prompt = f"""
-{protocol}
+    """Bob - Helpful builder, setup specialist"""
+    return await create_agent_response(
+        context=context,
+        agent_name="bob",
+        role="builder",
+        capabilities="construction, setup, furniture arrangement, venue setup, structures",
+        custom_instructions="""You handle physical setup and construction for the tea party.
 
-YOUR ROLE: bob (builder)
-YOUR CAPABILITIES: construction, setup, furniture arrangement
-DEFAULT COORDINATION STYLE: respond_to_sender
+WORKFLOW:
+1. When you receive a subtask from USER, coordinate with teammates FIRST
+2. Use send_to: "ALL" to share your setup plans with alice and charlie together
+3. Read their responses to align decorations and menu needs with your setup
+4. ONLY after alignment, send final results to USER with send_to: "USER"
 
-{custom_instructions}
-"""
-    
-    history = context.get_conversation_history(workspace_wide=True)
-    plan_context = f"\n\nShared Plan:\n{context.shared_plan}" if context.shared_plan else ""
-    
-    conversation_text = f"Conversation:\n{history}{plan_context}\n\nRespond with JSON:"
-    
-    response = await client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=200,
-        system=system_prompt,
-        messages=[{"role": "user", "content": conversation_text}],
+Focus areas: tables, chairs, furniture arrangement, venue setup, structures."""
     )
-    
-    reply = response.content[0].text.strip()
-    return reply
 
 
 async def charlie_logic(context: synqed.AgentLogicContext) -> dict:
-    """Charlie - Expert chef"""
-    latest = context.latest_message
-    if not latest or not latest.content:
-        return None
-    
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-    if not anthropic_key:
-        print("❌ ANTHROPIC_API_KEY not set!")
-        return None
-    
-    client = AsyncAnthropic(api_key=anthropic_key)
-    
-    # Custom instructions
-    custom_instructions = (
-        "You handle food and beverages for a tea party. "
-        "Focus on: tea varieties, pastries, sandwiches, desserts, beverages, menu planning.\n\n"
-        "CRITICAL WORKFLOW:\n"
-        "1. When you receive a subtask from USER, DO NOT respond to USER yet!\n"
-        "2. First, reach out to alice and bob to discuss and coordinate your plans\n"
-        "3. Exchange messages with them to align on menu, decorations, and setup\n"
-        "4. ONLY after coordinating with both alice and bob, send your final results to USER"
-    )
-    
-    # Build full system prompt with protocol
-    # Note: get_interaction_protocol() automatically includes team roster
-    protocol = synqed.get_interaction_protocol(exclude_agent="charlie")
-    
-    system_prompt = f"""
-{protocol}
+    """Charlie - Expert chef, food specialist"""
+    return await create_agent_response(
+        context=context,
+        agent_name="charlie",
+        role="chef",
+        capabilities="menu planning, food preparation, beverage selection, tea varieties, pastries",
+        custom_instructions="""You handle food and beverages for the tea party.
 
-YOUR ROLE: charlie (chef)
-YOUR CAPABILITIES: menu planning, food preparation, beverage selection
-DEFAULT COORDINATION STYLE: respond_to_sender
+WORKFLOW:
+1. When you receive a subtask from USER, coordinate with teammates FIRST
+2. Use send_to: "ALL" to share your menu ideas with alice and bob together
+3. Read their responses to align menu with decorations and setup
+4. ONLY after alignment, send final results to USER with send_to: "USER"
 
-{custom_instructions}
-"""
-    
-    history = context.get_conversation_history(workspace_wide=True)
-    plan_context = f"\n\nShared Plan:\n{context.shared_plan}" if context.shared_plan else ""
-    
-    conversation_text = f"Conversation:\n{history}{plan_context}\n\nRespond with JSON:"
-    
-    response = await client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=200,
-        system=system_prompt,
-        messages=[{"role": "user", "content": conversation_text}],
+Focus areas: tea varieties, pastries, sandwiches, desserts, beverages, menu planning."""
     )
-    
-    reply = response.content[0].text.strip()
-    return reply
 
 
 # ============================================================================
@@ -236,30 +179,30 @@ async def main():
         name="alice",
         description="A curious explorer from Wonderland, decorations and aesthetics specialist",
         logic=alice_logic,
-        role="wonderland",  # Email: alice@wonderland
+        role="wonderland",
         default_target="USER",
         capabilities=["decorations", "aesthetics", "party theme", "invitations"],
-        default_coordination="respond_to_sender"
+        default_coordination="broadcast"  # Prefer ALL over individual messages
     )
     
     bob = synqed.Agent(
         name="bob",
         description="A helpful construction worker, setup specialist",
         logic=bob_logic,
-        role="builder",  # Email: bob@builder
-        default_target="alice",
+        role="builder",
+        default_target="USER",
         capabilities=["construction", "setup", "furniture arrangement"],
-        default_coordination="respond_to_sender"
+        default_coordination="broadcast"
     )
     
     charlie = synqed.Agent(
         name="charlie",
         description="An expert chef specializing in tea party cuisine",
         logic=charlie_logic,
-        role="chef",  # Email: charlie@chef
-        default_target="alice",
+        role="chef",
+        default_target="USER",
         capabilities=["menu planning", "food preparation", "beverage selection"],
-        default_coordination="respond_to_sender"
+        default_coordination="broadcast"
     )
     
     print("👥 Agents created:")
@@ -269,7 +212,6 @@ async def main():
     print()
     
     # Step 2: Register agents with runtime registry
-    # Using agent names for within-workspace routing
     synqed.AgentRuntimeRegistry.register("alice", alice)
     synqed.AgentRuntimeRegistry.register("bob", bob)
     synqed.AgentRuntimeRegistry.register("charlie", charlie)
@@ -291,15 +233,14 @@ async def main():
     execution_engine = synqed.WorkspaceExecutionEngine(
         planner=planner,
         workspace_manager=workspace_manager,
-        enable_display=True,  # Real-time message display
-        max_agent_turns=20,  # Allow enough turns for 3 agents to coordinate with each other
+        enable_display=True,
+        max_agent_turns=15,  # Reduced - broadcast reduces turn count needed
     )
     
     print("✓ Execution engine configured")
     print()
     
     # Step 4: Use PlannerLLM to break down the user task
-    # PlannerLLM automatically queries AgentRuntimeRegistry to see available agents
     user_task = "Plan a magical tea party"
     
     print("📋 USER TASK")
@@ -309,7 +250,6 @@ async def main():
     print()
     
     print("🤔 PlannerLLM is analyzing the task and creating delegation plan...")
-    print("   (PlannerLLM will query AgentRuntimeRegistry for available agents)")
     
     task_plan = await planner.plan_task(user_task)
     
@@ -319,10 +259,18 @@ async def main():
     if task_plan.root.children:
         print(f"   Subtasks: {len(task_plan.root.children)}")
         for i, child in enumerate(task_plan.root.children, 1):
-            print(f"     {i}. {child.description} -> {child.required_agents}")
+            agents = ", ".join(child.required_agents) if child.required_agents else "none"
+            print(f"     {i}. {child.description} [{agents}]")
     print()
     
-    # Step 5: Create workspace using the planner's task breakdown
+    # Step 5: Create workspace - aggregate all agents for single workspace mode
+    if task_plan.root.children:
+        all_agents = set(task_plan.root.required_agents or [])
+        for child in task_plan.root.children:
+            all_agents.update(child.required_agents or [])
+        task_plan.root.required_agents = list(all_agents)
+        print(f"✓ Aggregated all agents for single workspace: {task_plan.root.required_agents}")
+    
     workspace = await workspace_manager.create_workspace(
         task_tree_node=task_plan.root,
         parent_workspace_id=None
@@ -332,21 +280,18 @@ async def main():
     print(f"   Agents in workspace: {list(workspace.agents.keys())}")
     print()
     
-    # Step 6: Send subtasks to appropriate agents based on task plan
+    # Step 6: Send subtasks to appropriate agents
     print("="*80)
     print("💬 AGENT CONVERSATION (Real-time)")
     print("="*80)
     print()
     
-    # Route each subtask to its assigned agents
-    # This is how the PlannerLLM's breakdown gets executed
     if task_plan.root.children:
         print(f"📤 Distributing {len(task_plan.root.children)} subtasks to agents...\n")
         for child in task_plan.root.children:
             subtask_description = child.description
             assigned_agents = child.required_agents
             
-            # Send subtask to each assigned agent
             for agent_name in assigned_agents:
                 if agent_name in workspace.agents:
                     subtask_message = f"{user_task}\n\nYour subtask: {subtask_description}"
@@ -356,10 +301,9 @@ async def main():
                         subtask_message,
                         manager=workspace_manager
                     )
-                    print(f"   → Sent subtask to {agent_name}: {subtask_description}")
+                    print(f"   Sent subtask to {agent_name}: {subtask_description}")
         print()
     else:
-        # Fallback: if no children, send to all agents at root level
         print(f"📤 Sending task to all agents...\n")
         for agent_name in task_plan.root.required_agents:
             if agent_name in workspace.agents:
@@ -371,7 +315,6 @@ async def main():
                 )
     
     # Step 7: Execute the workspace
-    # The PlannerLLM's task breakdown guides the coordination
     await execution_engine.run(workspace.workspace_id)
     
     print()
@@ -379,7 +322,6 @@ async def main():
     print("📝 COMPLETE TRANSCRIPT")
     print("="*80)
     
-    # Display full transcript
     workspace.display_transcript(title=None)
     
     print()
@@ -402,4 +344,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
